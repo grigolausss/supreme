@@ -1,0 +1,9 @@
+# Ignore pyppeteer user data directory
+user_data/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Ignore personal configuration file
+config.json
