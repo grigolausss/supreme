@@ -65,7 +65,8 @@ async def main(product_keywords, color=None, size=None):
     print("Avvio del bot Supreme...")
     browser = await launch(
         headless=True,
-        args=['--no-sandbox', '--disable-setuid-sandbox']
+        args=['--no-sandbox', '--disable-setuid-sandbox'],
+        handleSIGINT=False
     )
     page = await browser.newPage()
     await page.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
