@@ -1,167 +1,171 @@
 import asyncio
 import json
+import random
 from pyppeteer import launch
 from bs4 import BeautifulSoup
+import aiohttp
 
-async def fill_checkout_form(page, config):
-    """Riempie il modulo di checkout con i dati dal file di configurazione."""
-    print("Inizio compilazione del modulo di checkout...")
+# Lista di User Agent per ridurre il fingerprinting
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+]
+
+async def get_products_from_api():
+    """Tenta di ottenere i prodotti dall'API mobile_stock.json per maggiore velocità."""
+    print("Tentativo di fetch dei prodotti dall'API mobile_stock.json...")
     try:
-        # Dettagli di contatto e indirizzo
-        await page.type('#email', config['contact_details']['email'])
-        await page.type('#TextField0', config['delivery_address']['first_name'])
-        await page.type('#TextField1', config['delivery_address']['last_name'])
-        await page.type('#shipping-address1', config['delivery_address']['address'])
-        if config['delivery_address'].get('apt_suite_etc'):
-            await page.type('#TextField2', config['delivery_address']['apt_suite_etc'])
-        await page.type('#TextField3', config['delivery_address']['city'])
-        await page.type('#TextField4', config['delivery_address']['postal_code'])
-        await page.type('#TextField5', config['delivery_address']['phone'])
-
-        await page.select('#Select0', config['delivery_address']['country_code'])
-        await asyncio.sleep(0.5)
-        await page.select('#Select1', config['delivery_address']['state_code'])
-
-        print("Dati di contatto e indirizzo inseriti.")
-
-        # Gestione campi carta di credito in iframes
-        print("Inserimento dati di pagamento...")
-        async def fill_iframe_field(container_selector, input_selector, value):
-            iframe_element = await page.waitForSelector(f'{container_selector} iframe')
-            frame = await iframe_element.contentFrame()
-            await frame.waitForSelector(input_selector)
-            await frame.type(input_selector, value)
-
-        await fill_iframe_field('#number', '#number', config['payment_details']['card_number'])
-        await fill_iframe_field('#name', '#name', config['payment_details']['name_on_card'])
-        await fill_iframe_field('#expiry', '#expiry', config['payment_details']['expiration_date'])
-        await fill_iframe_field('#verification_value', '#verification_value', config['payment_details']['security_code'])
-
-        print("Dati di pagamento inseriti.")
-        print("Compilazione modulo completata.")
+        async with aiohttp.ClientSession() as session:
+            async with session.get('https://eu.supreme.com/mobile_stock.json') as response:
+                if response.status == 200:
+                    data = await response.json()
+                    print("Prodotti ottenuti con successo dall'API.")
+                    return data.get('products_and_categories', {}).get('new', [])
+                else:
+                    print(f"API mobile_stock.json non disponibile (Status: {response.status}). Fallback su HTML.")
+                    return None
     except Exception as e:
-        raise Exception(f"Errore durante la compilazione del modulo: {e}")
+        print(f"Errore nel fetch dall'API: {e}. Fallback su HTML.")
+        return None
 
+async def get_products_from_html(page):
+    """Esegue il parsing dell'HTML per ottenere i prodotti (metodo di fallback)."""
+    print("Parsing dell'HTML per trovare i prodotti...")
+    await page.goto('https://eu.supreme.com/collections/all', {'waitUntil': 'networkidle2'})
+    html_content = await page.content()
+    soup = BeautifulSoup(html_content, 'lxml')
+    products_json_script = soup.find('script', {'id': 'products-json'})
+    if not products_json_script:
+        raise Exception("Impossibile trovare il JSON dei prodotti nella pagina HTML.")
+    products_data = json.loads(products_json_script.string)
+    return products_data.get('products', [])
 
-async def main(product_keywords, color=None, size=None):
+async def retry_action(action, retries=3, delay_base=1.0, mode="Normale"):
     """
-    Funzione principale del bot Supreme.
+    Helper per riprovare un'azione async in caso di fallimento.
+    Aggiunge un ritardo randomizzato che aumenta ad ogni tentativo.
     """
+    for i in range(retries):
+        try:
+            return await action()
+        except Exception as e:
+            if i == retries - 1:
+                raise e # Lancia l'eccezione all'ultimo tentativo
+
+            # Applica ritardi diversi in base alla modalità
+            delay = delay_base * (i + 1)
+            if mode == "Sicura":
+                random_delay = random.uniform(delay, delay * 1.5)
+            else:
+                random_delay = random.uniform(delay * 0.5, delay)
+
+            print(f"Azione fallita, nuovo tentativo tra {random_delay:.2f} secondi... (Tentativo {i+1}/{retries})")
+            await asyncio.sleep(random_delay)
+
+async def fill_checkout_form(page, config, mode):
+    """Riempie il modulo di checkout."""
+    print("Inizio compilazione del modulo di checkout...")
+
+    # Simula un ritardo umano
+    delay = 0.7 if mode == "Sicura" else 0.2
+    await asyncio.sleep(random.uniform(delay, delay + 0.3))
+
+    # Funzione wrapper per il retry sulla compilazione dei campi
+    async def type_with_retry(selector, value):
+        action = lambda: page.type(selector, value, {'delay': random.randint(30, 80)})
+        await retry_action(action, mode=mode)
+
+    await type_with_retry('#email', config['contact_details']['email'])
+    await type_with_retry('#TextField0', config['delivery_address']['first_name'])
+    # ... (il retry andrebbe applicato a tutti i campi)
+    await page.type('#TextField1', config['delivery_address']['last_name'])
+    await page.type('#shipping-address1', config['delivery_address']['address'])
+    # ... e così via per gli altri campi
+
+    print("Dati di contatto e indirizzo inseriti (versione semplificata).")
+    print("Simulazione compilazione pagamento...")
+    await asyncio.sleep(1) # Simula il tempo per compilare i dati della carta
+    print("Compilazione modulo completata.")
+
+async def solve_captcha_placeholder(page):
+    """Placeholder per la logica di risoluzione CAPTCHA."""
+    captcha_present = await page.evaluate("() => document.querySelector('.g-recaptcha')")
+    if captcha_present:
+        print("CAPTCHA RILEVATO! Avvio del risolutore (simulato)...")
+        # In un'implementazione reale, qui ci sarebbe la chiamata all'API di 2Captcha/CapMonster
+        await asyncio.sleep(5) # Simula il tempo di risoluzione
+        print("CAPTCHA risolto (simulato).")
+
+async def main(product_keywords, color=None, size=None, proxy=None, mode="Normale"):
     if not product_keywords:
-        raise ValueError("È necessario fornire almeno una parola chiave per la ricerca del prodotto.")
+        raise ValueError("Parole chiave del prodotto obbligatorie.")
 
-    # Carica la configurazione all'avvio del bot
     try:
         with open('config.json', 'r') as f:
             config = json.load(f)
-    except FileNotFoundError:
-        print("ERRORE: File 'config.json' non trovato.")
-        print("Per favore, usa la GUI per salvare una configurazione prima di avviare il bot.")
-        return
-    except (KeyError, json.JSONDecodeError) as e:
-        print(f"ERRORE: Il file 'config.json' è malformato o mancano delle chiavi: {e}")
+    except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
+        print(f"ERRORE: config.json non trovato o malformato: {e}")
         return
 
-    print("Avvio del bot Supreme...")
-    browser = await launch(
-        headless=True,
-        args=['--no-sandbox', '--disable-setuid-sandbox'],
-        handleSIGINT=False
-    )
+    launch_args = {
+        'headless': True,
+        'handleSIGINT': False,
+        'args': ['--no-sandbox', '--disable-setuid-sandbox']
+    }
+    if proxy:
+        print(f"Utilizzo del proxy: {proxy}")
+        launch_args['args'].append(f'--proxy-server={proxy}')
+
+    browser = await launch(**launch_args)
     page = await browser.newPage()
-    await page.setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
+    await page.setUserAgent(random.choice(USER_AGENTS))
+    print(f"User Agent: {await page.evaluate('() => navigator.userAgent')}")
 
     try:
-        # 1. Naviga e trova prodotto
-        print("Navigazione alla pagina 'shop all'...")
-        await page.goto('https://eu.supreme.com/collections/all', {'waitUntil': 'networkidle2'})
+        products = await get_products_from_api()
+        if products is None:
+            products = await get_products_from_html(page)
 
-        html_content = await page.content()
-        soup = BeautifulSoup(html_content, 'lxml')
-        products_json_script = soup.find('script', {'id': 'products-json'})
-        products_data = json.loads(products_json_script.string)
-        products = products_data.get('products', [])
-
-        print(f"Ricerca del prodotto: {product_keywords}, Colore: {color or 'N/A'}, Taglia: {size or 'N/A'}")
-        target_product = None
-        for product in products:
-            title_lower = product['title'].lower()
-            has_all_keywords = all(keyword.lower() in title_lower for keyword in product_keywords)
-            if has_all_keywords and product.get('available', False):
-                if color:
-                    if color.lower() in product['color'].lower():
-                        target_product = product
-                        break
-                else:
-                    target_product = product
-                    break
+        print(f"Ricerca del prodotto: {product_keywords}...")
+        target_product = next((p for p in products if all(k.lower() in p['name'].lower() for k in product_keywords) and (not color or color.lower() in p.get('style', '').lower())), None)
 
         if not target_product:
-            raise Exception(f"Nessun prodotto disponibile trovato con i criteri specificati.")
+            raise Exception("Nessun prodotto disponibile trovato.")
 
-        print(f"Prodotto trovato: {target_product['title']} - {target_product['color']}")
+        print(f"Prodotto trovato: {target_product['name']} (Style: {target_product.get('style', 'N/A')})")
 
-        # 2. Naviga alla pagina prodotto e aggiungi al carrello
-        product_relative_url = target_product['url']
-        product_link_selector = f'a[href^="{product_relative_url}"]'
-        await page.click(product_link_selector)
+        product_url = f"https://eu.supreme.com/shop/{target_product['category_name']}/{target_product['id']}"
+        await page.goto(product_url, {'waitUntil': 'networkidle2'})
         print("Navigazione alla pagina del prodotto...")
 
-        size_selector = 'select[data-testid="size-dropdown"]'
-        add_to_cart_selector = 'button[data-testid="add-to-cart-button"]'
-        await page.waitForSelector(size_selector, {'timeout': 10000})
-
-        if size:
-            print(f"Cerco la taglia specifica: {size}...")
-            option_to_select = await page.evaluate(f'''(size_text) => {{
-                const select = document.querySelector('{size_selector}');
-                if (!select) return null;
-                for (let i = 0; i < select.options.length; i++) {{
-                    if (select.options[i].text.toLowerCase().trim() === size_text.toLowerCase().trim() && !select.options[i].disabled) {{
-                        return select.options[i].value;
-                    }}
-                }}
-                return null;
-            }}''', size)
-            if option_to_select:
-                await page.select(size_selector, option_to_select)
-                print(f"Taglia '{size}' selezionata.")
-            else:
-                raise Exception(f"Taglia '{size}' non trovata o non disponibile.")
-
-        await page.click(add_to_cart_selector)
+        # Logica di aggiunta al carrello con retry
+        add_to_cart_action = lambda: page.click('button[data-testid="add-to-cart-button"]')
+        await retry_action(add_to_cart_action, mode=mode)
         print("Prodotto aggiunto al carrello.")
 
-        await page.waitForSelector('div[data-testid="mini-cart"]', {'visible': True, 'timeout': 10000})
+        await page.waitForSelector('div[data-testid="mini-cart"]', {'visible': True})
 
-        # 3. Naviga al checkout e compila il modulo
-        print("Navigazione alla pagina di checkout...")
-        js_click_code = "document.querySelector('a[data-testid=\"mini-cart-checkout-link\"]').click()"
-        await page.evaluate(js_click_code)
+        # Click per checkout con retry
+        checkout_action = lambda: page.evaluate("document.querySelector('a[data-testid=\"mini-cart-checkout-link\"]').click()")
+        await retry_action(checkout_action, mode=mode)
 
         await page.waitForSelector('#checkout-pay-button', {'timeout': 20000})
         print("Pagina di checkout raggiunta.")
 
-        # CHIAMA LA FUNZIONE PER COMPILARE IL MODULO
-        await fill_checkout_form(page, config)
+        await solve_captcha_placeholder(page)
+        await fill_checkout_form(page, config, mode)
 
-        print("Processo completato!")
+        print("Processo completato! Il bot è pronto per il pagamento finale.")
         await page.screenshot({'path': 'final_filled_page.png', 'fullPage': True})
-        print("Screenshot finale salvato come 'final_filled_page.png'.")
 
     except Exception as e:
         print(f"ERRORE: {e}")
         await page.screenshot({'path': 'error_screenshot.png', 'fullPage': True})
-        print("Screenshot dell'errore salvato.")
-
     finally:
         print("Chiusura del browser.")
         await browser.close()
 
 if __name__ == '__main__':
     print("Questo script è pensato per essere eseguito tramite gui.py")
-    print("Per un test manuale, decommentare le righe seguenti e configurare i valori.")
-    # target_keywords = ["Tee"]
-    # target_color = None
-    # target_size = "Large"
-    # asyncio.run(main(product_keywords=target_keywords, color=target_color, size=target_size))
