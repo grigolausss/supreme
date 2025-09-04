@@ -22,7 +22,7 @@ async def get_products_from_html(page):
     return products_data.get('products', [])
 
 async def fill_checkout_form(page, config):
-    """Riempie il modulo di checkout con i dati di configurazione."""
+    """Riempie il modulo di checkout, gestendo l'autocompletamento dell'indirizzo."""
     print("Inizio compilazione del modulo di checkout...")
     addr = config['delivery_address']
     contact = config['contact_details']
@@ -30,18 +30,27 @@ async def fill_checkout_form(page, config):
 
     await asyncio.sleep(random.uniform(0.5, 1.0))
 
-    # Revert ai selettori ID, più stabili dei placeholder dipendenti dalla lingua
+    # Compila i campi fino all'indirizzo
     await page.type('#email', contact['email'], {'delay': random.randint(35, 85)})
     await page.select('#Select0', addr['country_code'])
     await asyncio.sleep(0.4)
     await page.type('#TextField0', addr['first_name'], {'delay': random.randint(35, 85)})
     await page.type('#TextField1', addr['last_name'], {'delay': random.randint(35, 85)})
-    await page.type('#shipping-address1', addr['address'], {'delay': random.randint(35, 85)})
+
+    # --- Logica per l'autocompletamento di Google ---
+    print("Inserimento indirizzo e gestione autocompletamento...")
+    await page.type('#shipping-address1', addr['address'], {'delay': random.randint(40, 90)})
+    # Attendi la comparsa del menu di autocompletamento
+    autocomplete_selector = '.pac-item'
+    await page.waitForSelector(autocomplete_selector, {'timeout': 5000})
+    await asyncio.sleep(0.5) # Pausa per stabilità
+    # Clicca sul primo suggerimento
+    await page.click(autocomplete_selector)
+    print("Suggerimento indirizzo cliccato. CAP, Città e Provincia dovrebbero essere compilati.")
+
+    # Compila i campi rimanenti che non vengono autocompletati
     if addr.get('apt_suite_etc'):
         await page.type('#TextField2', addr['apt_suite_etc'], {'delay': random.randint(35, 85)})
-    await page.type('#TextField4', addr['postal_code'], {'delay': random.randint(35, 85)})
-    await page.type('#TextField3', addr['city'], {'delay': random.randint(35, 85)})
-    await page.select('#Select1', addr['province_code'])
     await page.type('#TextField5', addr['phone'], {'delay': random.randint(35, 85)})
     print("Dati di contatto e indirizzo inseriti.")
 
@@ -58,7 +67,7 @@ async def fill_checkout_form(page, config):
     print("Dati di pagamento inseriti.")
 
     print("Accettazione termini e condizioni...")
-    # Usa un selettore più robusto per la checkbox
+    # Selettore robusto che trova il label e clicca, attivando la checkbox associata
     await page.click('label[for="checkout_terms_and_conditions"]')
 
 async def main(product_keywords, color=None, size=None, proxy=None, show_browser=False):
@@ -81,9 +90,7 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
 
         print(f"Ricerca del prodotto: {product_keywords}...")
         target_product = next((p for p in products if all(k.lower() in p.get('title', '').lower() for k in product_keywords) and (not color or color.lower() in p.get('color', '').lower())), None)
-
         if not target_product: raise Exception("Prodotto non trovato.")
-
         print(f"Prodotto trovato: {target_product['title']} - {target_product['color']}")
 
         await page.goto(f"https://eu.supreme.com{target_product['url']}", {'waitUntil': 'networkidle2', 'timeout': 30000})
