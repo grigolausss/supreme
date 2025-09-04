@@ -78,7 +78,7 @@ async def main(product_keywords, color=None, size=None, proxy=None, mode="Normal
     except Exception as e:
         print(f"ERRORE: config.json non trovato o malformato: {e}"); return
 
-    launch_args = {'headless': not show_browser, 'handleSIGINT': False, 'args': ['--no-sandbox', '--disable-setuid-sandbox']}
+    launch_args = {'headless': not show_browser, 'args': ['--no-sandbox', '--disable-setuid-sandbox']}
     if proxy:
         print(f"Utilizzo del proxy: {proxy}")
         launch_args['args'].append(f'--proxy-server={proxy}')

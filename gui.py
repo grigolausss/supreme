@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 import json
-import threading
+import multiprocessing as mp
 import supreme_bot
 import sys
 import queue
@@ -9,13 +9,34 @@ import asyncio
 import os
 
 class QueueWriter:
-    """Una classe simile a un file per reindirizzare l'output a una coda."""
+    """Una classe simile a un file per reindirizzare l'output a una coda multiprocesso."""
     def __init__(self, queue):
         self.queue = queue
     def write(self, text):
         self.queue.put(text)
     def flush(self):
         pass
+
+def run_bot_process(log_queue, keywords, color, size, proxy, mode, show_browser):
+    """
+    Funzione eseguita in un processo separato per isolare il bot e i suoi segnali.
+    """
+    # Reindirizza stdout e stderr di questo processo alla coda
+    sys.stdout = QueueWriter(log_queue)
+    sys.stderr = QueueWriter(log_queue)
+
+    try:
+        asyncio.run(supreme_bot.main(
+            product_keywords=keywords,
+            color=color,
+            size=size,
+            proxy=proxy,
+            mode=mode,
+            show_browser=show_browser
+        ))
+    except Exception as e:
+        # Assicura che anche le eccezioni non gestite vengano loggate
+        print(f"ERRORE FATALE NEL PROCESSO DEL BOT: {e}")
 
 class SupremeBotGUI(tk.Tk):
     def __init__(self):
@@ -83,10 +104,7 @@ class SupremeBotGUI(tk.Tk):
         self.log_area.pack(expand=True, fill=tk.BOTH)
         self.log_area.configure(state='disabled')
 
-        self.log_queue = queue.Queue()
-        self.queue_writer = QueueWriter(self.log_queue)
-        sys.stdout = self.queue_writer
-        sys.stderr = self.queue_writer
+        self.log_queue = mp.Queue()
         self.after(100, self.periodic_log_check)
 
     def create_widget_row(self, parent, label_text):
@@ -113,7 +131,7 @@ class SupremeBotGUI(tk.Tk):
         check.pack(side=tk.RIGHT)
 
     def save_config(self):
-        self.log("Salvataggio configurazione...")
+        self.log("Salvataggio configurazione...\n")
         config_data = {
             "task_details": {"keywords": self.keywords_entry.get(), "color": self.color_entry.get(), "size": self.size_entry.get(), "proxy": self.proxy_entry.get(), "mode": self.mode_var.get(), "show_browser": self.show_browser_var.get()},
             "contact_details": {"email": self.email_entry.get()},
@@ -121,17 +139,15 @@ class SupremeBotGUI(tk.Tk):
             "payment_details": {"name_on_card": self.card_name_entry.get(), "card_number": self.card_num_entry.get(), "expiration_date": self.card_exp_entry.get(), "security_code": self.card_cvv_entry.get()}
         }
         try:
-            with open("config.json", "w") as f:
-                json.dump(config_data, f, indent=2)
+            with open("config.json", "w") as f: json.dump(config_data, f, indent=2)
             self.log("Configurazione salvata con successo!\n")
         except Exception as e:
             self.log(f"Errore salvataggio: {e}\n")
 
     def load_config(self):
-        self.log("Caricamento configurazione...")
+        self.log("Caricamento configurazione...\n")
         try:
-            with open("config.json", "r") as f:
-                config_data = json.load(f)
+            with open("config.json", "r") as f: config_data = json.load(f)
 
             task = config_data.get("task_details", {}); delivery = config_data.get("delivery_address", {}); payment = config_data.get("payment_details", {}); contact = config_data.get("contact_details", {})
 
@@ -159,23 +175,23 @@ class SupremeBotGUI(tk.Tk):
             keywords = [k.strip() for k in self.keywords_entry.get().split(',')]
             if not all(keywords): raise ValueError("Le parole chiave sono obbligatorie.")
 
-            bot_thread = threading.Thread(target=self._run_bot_thread, args=(keywords, self.color_entry.get() or None, self.size_entry.get() or None, self.proxy_entry.get() or None, self.mode_var.get(), self.show_browser_var.get()), daemon=True)
-            bot_thread.start()
+            args = (self.log_queue, keywords, self.color_entry.get() or None, self.size_entry.get() or None, self.proxy_entry.get() or None, self.mode_var.get(), self.show_browser_var.get())
+
+            process = mp.Process(target=run_bot_process, args=args, daemon=True)
+            process.start()
+
+            # Usa un thread per attendere la fine del processo e riabilitare il pulsante
+            wait_thread = threading.Thread(target=self.wait_for_process, args=(process,), daemon=True)
+            wait_thread.start()
+
         except Exception as e:
             self.log(f"Errore avvio bot: {e}\n")
             self.start_button.config(state=tk.NORMAL)
 
-    def _run_bot_thread(self, keywords, color, size, proxy, mode, show_browser):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(supreme_bot.main(product_keywords=keywords, color=color, size=size, proxy=proxy, mode=mode, show_browser=show_browser))
-            self.log("\n--- Esecuzione Bot Terminata ---\n")
-        except Exception as e:
-            self.log(f"\nERRORE nel thread del bot: {e}\n")
-        finally:
-            loop.close()
-            self.after(0, self.enable_buttons)
+    def wait_for_process(self, process):
+        """Attende la fine del processo e poi riabilita il pulsante."""
+        process.join()
+        self.after(0, self.enable_buttons)
 
     def enable_buttons(self):
         self.start_button.config(state=tk.NORMAL)
