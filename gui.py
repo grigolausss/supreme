@@ -34,7 +34,7 @@ class SupremeBotGUI(tk.Tk):
         config_frame = ttk.Frame(main_frame); config_frame.pack(fill=tk.X, pady=5)
 
         task_frame = ttk.Labelframe(config_frame, text="Task, Prodotto e Scheduling"); task_frame.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=5, anchor="n")
-        self.create_labeled_entry(task_frame, "Parole Chiave (virgola)", "keywords_entry")
+        self.create_labeled_entry(task_frame, "Parole Chiave (AND)", "keywords_entry", note="(Tutte le parole devono essere nel titolo)")
         self.create_labeled_entry(task_frame, "Colore", "color_entry")
         self.create_labeled_entry(task_frame, "Taglia", "size_entry")
         self.create_labeled_entry(task_frame, "Proxy (opzionale)", "proxy_entry")
@@ -43,7 +43,7 @@ class SupremeBotGUI(tk.Tk):
         self.show_browser_var = tk.BooleanVar(); self.create_check_button(task_frame, "Mostra Browser (lento)", self.show_browser_var)
 
         delivery_frame = ttk.Labelframe(config_frame, text="Contatto e Spedizione"); delivery_frame.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=5, anchor="n")
-        self.create_labeled_entry(delivery_frame, "Email", "email_entry"); self.create_labeled_entry(delivery_frame, "Nome", "first_name_entry"); self.create_labeled_entry(delivery_frame, "Cognome", "last_name_entry"); self.create_labeled_entry(delivery_frame, "Indirizzo", "address_entry"); self.create_labeled_entry(delivery_frame, "Apt/Suite", "apt_entry"); self.create_labeled_entry(delivery_frame, "Paese (es. IT, US)", "country_code_entry"); self.create_labeled_entry(delivery_frame, "CAP", "postal_code_entry"); self.create_labeled_entry(delivery_frame, "Città", "city_entry"); self.create_labeled_entry(delivery_frame, "Provincia (es. PD, MI)", "province_code_entry"); self.create_labeled_entry(delivery_frame, "Telefono", "phone_entry")
+        self.create_labeled_entry(delivery_frame, "Email", "email_entry"); self.create_labeled_entry(delivery_frame, "Nome", "first_name_entry"); self.create_labeled_entry(delivery_frame, "Cognome", "last_name_entry"); self.create_labeled_entry(delivery_frame, "Indirizzo", "address_entry"); self.create_labeled_entry(delivery_frame, "Apt/Suite", "apt_entry"); self.create_labeled_entry(delivery_frame, "Codice Paese (IT, US)", "country_code_entry"); self.create_labeled_entry(delivery_frame, "CAP", "postal_code_entry"); self.create_labeled_entry(delivery_frame, "Città", "city_entry"); self.create_labeled_entry(delivery_frame, "Provincia (Sigla, es. PD)", "province_code_entry"); self.create_labeled_entry(delivery_frame, "Telefono", "phone_entry")
 
         payment_frame = ttk.Labelframe(config_frame, text="Dettagli Pagamento"); payment_frame.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=5, anchor="n")
         self.create_labeled_entry(payment_frame, "Nome su Carta", "card_name_entry"); self.create_labeled_entry(payment_frame, "Numero Carta", "card_num_entry"); self.create_labeled_entry(payment_frame, "Scadenza (MM/YY)", "card_exp_entry"); self.create_labeled_entry(payment_frame, "CVV", "card_cvv_entry")
@@ -63,10 +63,13 @@ class SupremeBotGUI(tk.Tk):
         label = ttk.Label(frame, text=label_text, width=25); label.pack(side=tk.LEFT, anchor="w")
         return frame
 
-    def create_labeled_entry(self, parent, label_text, var_name):
+    def create_labeled_entry(self, parent, label_text, var_name, note=None):
         frame = self.create_widget_row(parent, label_text)
         entry = ttk.Entry(frame); entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
         setattr(self, var_name, entry)
+        if note:
+            note_label = ttk.Label(frame, text=note, font=('Helvetica', 8, 'italic'))
+            note_label.pack(side=tk.RIGHT)
 
     def create_check_button(self, parent, label_text, var):
         frame = self.create_widget_row(parent, label_text)

@@ -1,17 +1,15 @@
 # --- ISTRUZIONI DI INSTALLAZIONE ---
-# Esegui: pip install beautifulsoup4 pyppeteer aiohttp
+# Esegui: pip install beautifulsoup4 pyppeteer
 
 import asyncio
 import json
 import random
-from pyppeteer import launch # Usa il pyppeteer standard
+from pyppeteer import launch
 from bs4 import BeautifulSoup
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/115.0"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
 ]
 
 async def get_products_from_html(page):
@@ -19,8 +17,7 @@ async def get_products_from_html(page):
     print("Parsing dell'HTML per trovare i prodotti...")
     await page.goto('https://eu.supreme.com/collections/all', {'waitUntil': 'networkidle2', 'timeout': 30000})
     script_content = await page.evaluate("() => document.getElementById('products-json').innerHTML")
-    if not script_content:
-        raise Exception("Impossibile trovare il JSON dei prodotti nella pagina HTML.")
+    if not script_content: raise Exception("Impossibile trovare il JSON dei prodotti.")
     products_data = json.loads(script_content)
     return products_data.get('products', [])
 
@@ -33,18 +30,19 @@ async def fill_checkout_form(page, config):
 
     await asyncio.sleep(random.uniform(0.5, 1.0))
 
-    await page.type('input[placeholder="Email"]', contact['email'], {'delay': random.randint(35, 85)})
+    # Revert ai selettori ID, più stabili dei placeholder dipendenti dalla lingua
+    await page.type('#email', contact['email'], {'delay': random.randint(35, 85)})
     await page.select('#Select0', addr['country_code'])
     await asyncio.sleep(0.4)
-    await page.type('input[placeholder="Nome"]', addr['first_name'], {'delay': random.randint(35, 85)})
-    await page.type('input[placeholder="Cognome"]', addr['last_name'], {'delay': random.randint(35, 85)})
-    await page.type('input[placeholder="Indirizzo"]', addr['address'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField0', addr['first_name'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField1', addr['last_name'], {'delay': random.randint(35, 85)})
+    await page.type('#shipping-address1', addr['address'], {'delay': random.randint(35, 85)})
     if addr.get('apt_suite_etc'):
-        await page.type('input[placeholder="Appartamento, interno, ecc. (opzionale)"]', addr['apt_suite_etc'], {'delay': random.randint(35, 85)})
-    await page.type('input[placeholder="CAP"]', addr['postal_code'], {'delay': random.randint(35, 85)})
-    await page.type('input[placeholder="Città"]', addr['city'], {'delay': random.randint(35, 85)})
+        await page.type('#TextField2', addr['apt_suite_etc'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField4', addr['postal_code'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField3', addr['city'], {'delay': random.randint(35, 85)})
     await page.select('#Select1', addr['province_code'])
-    await page.type('input[placeholder="Telefono"]', addr['phone'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField5', addr['phone'], {'delay': random.randint(35, 85)})
     print("Dati di contatto e indirizzo inseriti.")
 
     print("Inserimento dati di pagamento...")
@@ -60,7 +58,8 @@ async def fill_checkout_form(page, config):
     print("Dati di pagamento inseriti.")
 
     print("Accettazione termini e condizioni...")
-    await page.click('input#checkout_terms_and_conditions')
+    # Usa un selettore più robusto per la checkbox
+    await page.click('label[for="checkout_terms_and_conditions"]')
 
 async def main(product_keywords, color=None, size=None, proxy=None, show_browser=False):
     if not product_keywords: raise ValueError("Parole chiave obbligatorie.")
@@ -69,16 +68,9 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
     except Exception as e:
         print(f"ERRORE: config.json non trovato o malformato: {e}"); return
 
-    launch_args = {
-        'headless': not show_browser,
-        'args': [
-            '--no-sandbox', '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', '--disable-gpu'
-        ]
-    }
+    launch_args = {'headless': not show_browser, 'args': ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']}
     if proxy:
-        print(f"Utilizzo del proxy: {proxy}")
-        launch_args['args'].append(f'--proxy-server={proxy}')
+        print(f"Utilizzo del proxy: {proxy}"); launch_args['args'].append(f'--proxy-server={proxy}')
 
     browser = await launch(**launch_args)
     page = await browser.newPage()
