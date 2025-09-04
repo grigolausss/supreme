@@ -5,115 +5,80 @@ from pyppeteer import launch
 from bs4 import BeautifulSoup
 import aiohttp
 
-# Lista di User Agent per ridurre il fingerprinting
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
 ]
 
 async def get_products_from_api():
-    """Tenta di ottenere i prodotti dall'API mobile_stock.json per maggiore velocità."""
-    print("Tentativo di fetch dei prodotti dall'API mobile_stock.json...")
+    print("Tentativo di fetch dei prodotti dall'API mobile...")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get('https://eu.supreme.com/mobile_stock.json') as response:
-                if response.status == 200:
-                    data = await response.json()
-                    print("Prodotti ottenuti con successo dall'API.")
-                    return data.get('products_and_categories', {}).get('new', [])
-                else:
-                    print(f"API mobile_stock.json non disponibile (Status: {response.status}). Fallback su HTML.")
-                    return None
+                response.raise_for_status()
+                data = await response.json()
+                print("Prodotti ottenuti con successo dall'API.")
+                return data.get('products_and_categories', {}).get('new', [])
     except Exception as e:
-        print(f"Errore nel fetch dall'API: {e}. Fallback su HTML.")
+        print(f"Errore fetch API: {e}. Fallback su HTML.")
         return None
 
 async def get_products_from_html(page):
-    """Esegue il parsing dell'HTML per ottenere i prodotti (metodo di fallback)."""
-    print("Parsing dell'HTML per trovare i prodotti...")
+    print("Parsing dell'HTML per trovare i prodotti (metodo di fallback)...")
     await page.goto('https://eu.supreme.com/collections/all', {'waitUntil': 'networkidle2'})
-    html_content = await page.content()
-    soup = BeautifulSoup(html_content, 'lxml')
-    products_json_script = soup.find('script', {'id': 'products-json'})
-    if not products_json_script:
+    script_content = await page.evaluate("() => document.getElementById('products-json').innerHTML")
+    if not script_content:
         raise Exception("Impossibile trovare il JSON dei prodotti nella pagina HTML.")
-    products_data = json.loads(products_json_script.string)
+    products_data = json.loads(script_content)
     return products_data.get('products', [])
 
-async def retry_action(action, retries=3, delay_base=1.0, mode="Normale"):
-    """
-    Helper per riprovare un'azione async in caso di fallimento.
-    Aggiunge un ritardo randomizzato che aumenta ad ogni tentativo.
-    """
-    for i in range(retries):
-        try:
-            return await action()
-        except Exception as e:
-            if i == retries - 1:
-                raise e # Lancia l'eccezione all'ultimo tentativo
-
-            # Applica ritardi diversi in base alla modalità
-            delay = delay_base * (i + 1)
-            if mode == "Sicura":
-                random_delay = random.uniform(delay, delay * 1.5)
-            else:
-                random_delay = random.uniform(delay * 0.5, delay)
-
-            print(f"Azione fallita, nuovo tentativo tra {random_delay:.2f} secondi... (Tentativo {i+1}/{retries})")
-            await asyncio.sleep(random_delay)
-
-async def fill_checkout_form(page, config, mode):
-    """Riempie il modulo di checkout."""
+async def fill_checkout_form(page, config):
     print("Inizio compilazione del modulo di checkout...")
+    addr = config['delivery_address']
+    contact = config['contact_details']
+    payment = config['payment_details']
 
-    # Simula un ritardo umano
-    delay = 0.7 if mode == "Sicura" else 0.2
-    await asyncio.sleep(random.uniform(delay, delay + 0.3))
+    # L'ordine corretto come da sito
+    await page.type('#email', contact['email'])
+    await page.select('#Select0', addr['country_code'])
+    await asyncio.sleep(0.3) # Pausa per permettere al sito di aggiornarsi
+    await page.type('#TextField0', addr['first_name'])
+    await page.type('#TextField1', addr['last_name'])
+    await page.type('#shipping-address1', addr['address'])
+    if addr.get('apt_suite_etc'):
+        await page.type('#TextField2', addr['apt_suite_etc'])
+    await page.type('#TextField4', addr['postal_code'])
+    await page.type('#TextField3', addr['city'])
+    await page.select('#Select1', addr['province_code'])
+    await page.type('#TextField5', addr['phone'])
+    print("Dati di contatto e indirizzo inseriti.")
 
-    # Funzione wrapper per il retry sulla compilazione dei campi
-    async def type_with_retry(selector, value):
-        action = lambda: page.type(selector, value, {'delay': random.randint(30, 80)})
-        await retry_action(action, mode=mode)
+    print("Inserimento dati di pagamento...")
+    async def fill_iframe_field(container_selector, input_selector, value):
+        iframe_element = await page.waitForSelector(f'{container_selector} iframe')
+        frame = await iframe_element.contentFrame()
+        await frame.type(input_selector, value, {'delay': random.randint(40, 90)})
 
-    await type_with_retry('#email', config['contact_details']['email'])
-    await type_with_retry('#TextField0', config['delivery_address']['first_name'])
-    # ... (il retry andrebbe applicato a tutti i campi)
-    await page.type('#TextField1', config['delivery_address']['last_name'])
-    await page.type('#shipping-address1', config['delivery_address']['address'])
-    # ... e così via per gli altri campi
-
-    print("Dati di contatto e indirizzo inseriti (versione semplificata).")
-    print("Simulazione compilazione pagamento...")
-    await asyncio.sleep(1) # Simula il tempo per compilare i dati della carta
-    print("Compilazione modulo completata.")
+    await fill_iframe_field('#number', '#number', payment['card_number'])
+    await fill_iframe_field('#name', '#name', payment['name_on_card'])
+    await fill_iframe_field('#expiry', '#expiry', payment['expiration_date'])
+    await fill_iframe_field('#verification_value', '#verification_value', payment['security_code'])
+    print("Dati di pagamento inseriti.")
 
 async def solve_captcha_placeholder(page):
-    """Placeholder per la logica di risoluzione CAPTCHA."""
-    captcha_present = await page.evaluate("() => document.querySelector('.g-recaptcha')")
-    if captcha_present:
+    if await page.evaluate("() => document.querySelector('.g-recaptcha')"):
         print("CAPTCHA RILEVATO! Avvio del risolutore (simulato)...")
-        # In un'implementazione reale, qui ci sarebbe la chiamata all'API di 2Captcha/CapMonster
-        await asyncio.sleep(5) # Simula il tempo di risoluzione
+        await asyncio.sleep(3)
         print("CAPTCHA risolto (simulato).")
 
-async def main(product_keywords, color=None, size=None, proxy=None, mode="Normale"):
-    if not product_keywords:
-        raise ValueError("Parole chiave del prodotto obbligatorie.")
-
+async def main(product_keywords, color=None, size=None, proxy=None, mode="Normale", show_browser=False):
+    if not product_keywords: raise ValueError("Parole chiave obbligatorie.")
     try:
-        with open('config.json', 'r') as f:
-            config = json.load(f)
-    except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
-        print(f"ERRORE: config.json non trovato o malformato: {e}")
-        return
+        with open('config.json', 'r') as f: config = json.load(f)
+    except Exception as e:
+        print(f"ERRORE: config.json non trovato o malformato: {e}"); return
 
-    launch_args = {
-        'headless': True,
-        'handleSIGINT': False,
-        'args': ['--no-sandbox', '--disable-setuid-sandbox']
-    }
+    launch_args = {'headless': not show_browser, 'handleSIGINT': False, 'args': ['--no-sandbox', '--disable-setuid-sandbox']}
     if proxy:
         print(f"Utilizzo del proxy: {proxy}")
         launch_args['args'].append(f'--proxy-server={proxy}')
@@ -121,47 +86,41 @@ async def main(product_keywords, color=None, size=None, proxy=None, mode="Normal
     browser = await launch(**launch_args)
     page = await browser.newPage()
     await page.setUserAgent(random.choice(USER_AGENTS))
-    print(f"User Agent: {await page.evaluate('() => navigator.userAgent')}")
 
     try:
-        products = await get_products_from_api()
-        if products is None:
-            products = await get_products_from_html(page)
+        products = await get_products_from_api() or await get_products_from_html(page)
 
         print(f"Ricerca del prodotto: {product_keywords}...")
         target_product = next((p for p in products if all(k.lower() in p['name'].lower() for k in product_keywords) and (not color or color.lower() in p.get('style', '').lower())), None)
+        if not target_product: raise Exception("Prodotto non trovato.")
 
-        if not target_product:
-            raise Exception("Nessun prodotto disponibile trovato.")
-
-        print(f"Prodotto trovato: {target_product['name']} (Style: {target_product.get('style', 'N/A')})")
-
+        print(f"Prodotto trovato: {target_product['name']}")
         product_url = f"https://eu.supreme.com/shop/{target_product['category_name']}/{target_product['id']}"
         await page.goto(product_url, {'waitUntil': 'networkidle2'})
-        print("Navigazione alla pagina del prodotto...")
 
-        # Logica di aggiunta al carrello con retry
-        add_to_cart_action = lambda: page.click('button[data-testid="add-to-cart-button"]')
-        await retry_action(add_to_cart_action, mode=mode)
+        if size:
+            print(f"Selezione taglia: {size}...")
+            await page.waitForSelector('select[data-testid="size-dropdown"]')
+            await page.select('select[data-testid="size-dropdown"]', size)
+
+        await page.click('button[data-testid="add-to-cart-button"]')
         print("Prodotto aggiunto al carrello.")
 
         await page.waitForSelector('div[data-testid="mini-cart"]', {'visible': True})
-
-        # Click per checkout con retry
-        checkout_action = lambda: page.evaluate("document.querySelector('a[data-testid=\"mini-cart-checkout-link\"]').click()")
-        await retry_action(checkout_action, mode=mode)
+        await asyncio.sleep(0.5) # Pausa di stabilità
+        await page.evaluate("document.querySelector('a[data-testid=\"mini-cart-checkout-link\"]').click()")
 
         await page.waitForSelector('#checkout-pay-button', {'timeout': 20000})
         print("Pagina di checkout raggiunta.")
 
         await solve_captcha_placeholder(page)
-        await fill_checkout_form(page, config, mode)
+        await fill_checkout_form(page, config)
 
-        print("Processo completato! Il bot è pronto per il pagamento finale.")
+        print("\nPROCESSO COMPLETATO! Il bot è pronto per il pagamento finale.")
         await page.screenshot({'path': 'final_filled_page.png', 'fullPage': True})
 
     except Exception as e:
-        print(f"ERRORE: {e}")
+        print(f"\nERRORE: {e}")
         await page.screenshot({'path': 'error_screenshot.png', 'fullPage': True})
     finally:
         print("Chiusura del browser.")

@@ -1,4 +1,12 @@
 {
+  "task_details": {
+    "keywords": "Tee",
+    "color": "",
+    "size": "Large",
+    "proxy": "",
+    "mode": "Normale",
+    "show_browser": false
+  },
   "contact_details": {
     "email": "johndoe@example.com"
   },
@@ -7,15 +15,15 @@
     "last_name": "Doe",
     "address": "123 Example Street",
     "apt_suite_etc": "Apt. 4B",
-    "city": "Exampleville",
-    "country_code": "US",
-    "state_code": "CA",
-    "postal_code": "90210",
-    "phone": "5551234567"
+    "country_code": "IT",
+    "postal_code": "35020",
+    "city": "Brugine",
+    "province_code": "PD",
+    "phone": "3921234567"
   },
   "payment_details": {
     "name_on_card": "John Doe",
-    "card_number": "1234567812345678",
+    "card_number": "4242424242424242",
     "expiration_date": "12/25",
     "security_code": "123"
   }
