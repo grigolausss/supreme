@@ -1,9 +1,10 @@
 # --- ISTRUZIONI DI INSTALLAZIONE ---
-# Esegui: pip install beautifulsoup4 pyppeteer
+# Esegui: pip install beautifulsoup4 pyppeteer aiohttp
 
 import asyncio
 import json
 import random
+import os
 from pyppeteer import launch
 from bs4 import BeautifulSoup
 
@@ -22,7 +23,7 @@ async def get_products_from_html(page):
     return products_data.get('products', [])
 
 async def fill_checkout_form(page, config):
-    """Riempie il modulo di checkout, gestendo l'autocompletamento dell'indirizzo."""
+    """Riempie il modulo di checkout, gestendo l'autocompletamento dell'indirizzo e la pausa per intervento manuale."""
     print("Inizio compilazione del modulo di checkout...")
     addr = config['delivery_address']
     contact = config['contact_details']
@@ -30,36 +31,39 @@ async def fill_checkout_form(page, config):
 
     await asyncio.sleep(random.uniform(0.5, 1.0))
 
-    # Revert ai selettori ID originali e stabili
+    # Usa selettori ID stabili
     await page.type('#email', contact['email'], {'delay': random.randint(35, 85)})
     await page.select('#Select0', addr['country_code'])
     await asyncio.sleep(0.4)
     await page.type('#TextField0', addr['first_name'], {'delay': random.randint(35, 85)})
     await page.type('#TextField1', addr['last_name'], {'delay': random.randint(35, 85)})
 
-    print("Inserimento indirizzo e gestione autocompletamento...")
-    await page.type('#shipping-address1', addr['address'], {'delay': random.randint(40, 90)})
-
-    # Clicca il pulsante "cerca" (lente di ingrandimento)
-    search_button_selector = 'button[aria-label*="Cerca"]' # Usa l'etichetta italiana
+    # --- Logica per l'autocompletamento di Google ---
     try:
-        await page.waitForSelector(search_button_selector, {'timeout': 3000})
-        await page.click(search_button_selector)
-
-        # Attendi e clicca il primo suggerimento
+        print("Inserimento indirizzo e gestione autocompletamento...")
+        await page.type('#shipping-address1', addr['address'], {'delay': random.randint(40, 90)})
         autocomplete_selector = '.pac-item'
         await page.waitForSelector(autocomplete_selector, {'timeout': 5000})
         await asyncio.sleep(0.5)
         await page.click(autocomplete_selector)
         print("Suggerimento indirizzo cliccato.")
-    except Exception:
-        print("Nessun suggerimento di indirizzo trovato o nessun pulsante 'cerca', procedo con la compilazione manuale.")
+    except Exception as e:
+        print(f"ERRORE autocompletamento: {e}")
+        print("PAUSA: Completa l'indirizzo manualmente nel browser (città, cap, prov) e poi clicca 'CONTINUA' sulla GUI.")
 
-    # Compila i campi rimanenti (necessario se l'autocomplete non popola tutto)
-    await page.type('#TextField2', addr.get('apt_suite_etc', ''), {'delay': random.randint(35, 85)})
-    await page.type('#TextField4', addr['postal_code'], {'delay': random.randint(35, 85)})
-    await page.type('#TextField3', addr['city'], {'delay': random.randint(35, 85)})
-    await page.select('#Select1', addr['province_code'])
+        # Stampa l'HTML della sezione indirizzo per aiutare l'utente
+        address_html = await page.evaluate("() => document.getElementById('shippingAddressForm').outerHTML")
+        print("\n--- SNIPPET HTML INDIRIZZO ---\n" + address_html + "\n--- FINE SNIPPET ---\n")
+
+        # Mettiti in attesa del segnale dall'utente
+        while not os.path.exists("resume_signal.txt"):
+            await asyncio.sleep(1)
+        os.remove("resume_signal.txt")
+        print("Segnale 'CONTINUA' ricevuto. Procedo...")
+
+    # Compila i campi rimanenti
+    if addr.get('apt_suite_etc'):
+        await page.type('#TextField2', addr['apt_suite_etc'], {'delay': random.randint(35, 85)})
     await page.type('#TextField5', addr['phone'], {'delay': random.randint(35, 85)})
     print("Dati di contatto e indirizzo inseriti.")
 
@@ -76,7 +80,7 @@ async def fill_checkout_form(page, config):
     print("Dati di pagamento inseriti.")
 
     print("Accettazione termini e condizioni...")
-    await page.evaluate("document.querySelector('label[for=\"checkout_terms_and_conditions\"]').click();")
+    await page.evaluate("document.getElementById('checkout_terms_and_conditions').click();")
 
 async def main(product_keywords, color=None, size=None, proxy=None, show_browser=False):
     if not product_keywords: raise ValueError("Parole chiave obbligatorie.")
@@ -98,9 +102,7 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
 
         print(f"Ricerca del prodotto: {product_keywords}...")
         target_product = next((p for p in products if all(k.lower() in p.get('title', '').lower() for k in product_keywords) and (not color or color.lower() in p.get('color', '').lower())), None)
-
         if not target_product: raise Exception("Prodotto non trovato.")
-
         print(f"Prodotto trovato: {target_product['title']} - {target_product['color']}")
 
         await page.goto(f"https://eu.supreme.com{target_product['url']}", {'waitUntil': 'networkidle2', 'timeout': 30000})
