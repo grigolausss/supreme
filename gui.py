@@ -1,3 +1,5 @@
+# --- ISTRUZIONI DI INSTALLAZIONE ---
+# Esegui: pip install beautifulsoup4 pyppeteer aiohttp
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 import json
@@ -8,14 +10,12 @@ import sys
 import queue
 import asyncio
 import os
+from datetime import datetime, timedelta
 
 class QueueWriter:
-    def __init__(self, queue):
-        self.queue = queue
-    def write(self, text):
-        self.queue.put(text)
-    def flush(self):
-        pass
+    def __init__(self, queue): self.queue = queue
+    def write(self, text): self.queue.put(text)
+    def flush(self): pass
 
 def run_bot_process(log_queue, keywords, color, size, proxy, show_browser):
     sys.stdout = QueueWriter(log_queue)
@@ -28,22 +28,19 @@ def run_bot_process(log_queue, keywords, color, size, proxy, show_browser):
 class SupremeBotGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Supreme Bot")
-        self.geometry("850x700")
-
-        style = ttk.Style(self)
-        style.configure("TLabel", padding=5, font=('Helvetica', 10)); style.configure("TEntry", padding=5, font=('Helvetica', 10)); style.configure("TButton", padding=5, font=('Helvetica', 10, 'bold')); style.configure("TFrame", padding=10); style.configure("TLabelframe", padding=10); style.configure("TLabelframe.Label", font=('Helvetica', 11, 'bold'))
-
+        self.title("Supreme Bot"); self.geometry("850x750")
+        style = ttk.Style(self); style.configure("TLabel", padding=5, font=('Helvetica', 10)); style.configure("TEntry", padding=5, font=('Helvetica', 10)); style.configure("TButton", padding=5, font=('Helvetica', 10, 'bold')); style.configure("TFrame", padding=10); style.configure("TLabelframe", padding=10); style.configure("TLabelframe.Label", font=('Helvetica', 11, 'bold'))
         main_frame = ttk.Frame(self, padding="10"); main_frame.pack(expand=True, fill=tk.BOTH)
         config_frame = ttk.Frame(main_frame); config_frame.pack(fill=tk.X, pady=5)
 
-        task_frame = ttk.Labelframe(config_frame, text="Task e Prodotto"); task_frame.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=5, anchor="n")
+        task_frame = ttk.Labelframe(config_frame, text="Task, Prodotto e Scheduling"); task_frame.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=5, anchor="n")
         self.create_labeled_entry(task_frame, "Parole Chiave (virgola)", "keywords_entry")
         self.create_labeled_entry(task_frame, "Colore", "color_entry")
         self.create_labeled_entry(task_frame, "Taglia", "size_entry")
         self.create_labeled_entry(task_frame, "Proxy (opzionale)", "proxy_entry")
-        self.show_browser_var = tk.BooleanVar()
-        self.create_check_button(task_frame, "Mostra Browser (lento)", self.show_browser_var)
+        self.create_labeled_entry(task_frame, "Data (YYYY-MM-DD)", "schedule_date_entry")
+        self.create_labeled_entry(task_frame, "Ora (HH:MM:SS)", "schedule_time_entry")
+        self.show_browser_var = tk.BooleanVar(); self.create_check_button(task_frame, "Mostra Browser (lento)", self.show_browser_var)
 
         delivery_frame = ttk.Labelframe(config_frame, text="Contatto e Spedizione"); delivery_frame.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=5, anchor="n")
         self.create_labeled_entry(delivery_frame, "Email", "email_entry"); self.create_labeled_entry(delivery_frame, "Nome", "first_name_entry"); self.create_labeled_entry(delivery_frame, "Cognome", "last_name_entry"); self.create_labeled_entry(delivery_frame, "Indirizzo", "address_entry"); self.create_labeled_entry(delivery_frame, "Apt/Suite", "apt_entry"); self.create_labeled_entry(delivery_frame, "Paese (es. IT, US)", "country_code_entry"); self.create_labeled_entry(delivery_frame, "CAP", "postal_code_entry"); self.create_labeled_entry(delivery_frame, "Città", "city_entry"); self.create_labeled_entry(delivery_frame, "Provincia (es. PD, MI)", "province_code_entry"); self.create_labeled_entry(delivery_frame, "Telefono", "phone_entry")
@@ -52,25 +49,24 @@ class SupremeBotGUI(tk.Tk):
         self.create_labeled_entry(payment_frame, "Nome su Carta", "card_name_entry"); self.create_labeled_entry(payment_frame, "Numero Carta", "card_num_entry"); self.create_labeled_entry(payment_frame, "Scadenza (MM/YY)", "card_exp_entry"); self.create_labeled_entry(payment_frame, "CVV", "card_cvv_entry")
 
         action_frame = ttk.Frame(main_frame); action_frame.pack(fill=tk.X, pady=10)
-        self.save_button = ttk.Button(action_frame, text="Salva Configurazione", command=self.save_config); self.save_button.pack(side=tk.LEFT, padx=5)
-        self.load_button = ttk.Button(action_frame, text="Carica Configurazione", command=self.load_config); self.load_button.pack(side=tk.LEFT, padx=5)
-        self.start_button = ttk.Button(action_frame, text="Avvia Bot", command=self.start_bot); self.start_button.pack(side=tk.RIGHT, padx=5)
+        self.save_button = ttk.Button(action_frame, text="Salva Config", command=self.save_config); self.save_button.pack(side=tk.LEFT, padx=5)
+        self.load_button = ttk.Button(action_frame, text="Carica Config", command=self.load_config); self.load_button.pack(side=tk.LEFT, padx=5)
+        self.start_button = ttk.Button(action_frame, text="Avvia/Programma Bot", command=self.start_or_schedule_bot); self.start_button.pack(side=tk.RIGHT, padx=5)
 
         log_frame = ttk.Labelframe(main_frame, text="Log"); log_frame.pack(expand=True, fill=tk.BOTH, pady=5)
         self.log_area = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, height=15, font=('Courier New', 9), bg="#f0f0f0"); self.log_area.pack(expand=True, fill=tk.BOTH); self.log_area.configure(state='disabled')
 
-        self.log_queue = mp.Queue()
-        self.after(100, self.periodic_log_check)
+        self.log_queue = mp.Queue(); self.after(100, self.periodic_log_check)
 
     def create_widget_row(self, parent, label_text):
         frame = ttk.Frame(parent); frame.pack(fill=tk.X, pady=2, padx=5)
         label = ttk.Label(frame, text=label_text, width=25); label.pack(side=tk.LEFT, anchor="w")
         return frame
 
-    def create_labeled_entry(self, parent, label_text, entry_var_name):
+    def create_labeled_entry(self, parent, label_text, var_name):
         frame = self.create_widget_row(parent, label_text)
         entry = ttk.Entry(frame); entry.pack(side=tk.RIGHT, expand=True, fill=tk.X)
-        setattr(self, entry_var_name, entry)
+        setattr(self, var_name, entry)
 
     def create_check_button(self, parent, label_text, var):
         frame = self.create_widget_row(parent, label_text)
@@ -78,30 +74,61 @@ class SupremeBotGUI(tk.Tk):
 
     def save_config(self):
         self.log("Salvataggio configurazione...\n")
-        config_data = {
-            "task_details": {"keywords": self.keywords_entry.get(), "color": self.color_entry.get(), "size": self.size_entry.get(), "proxy": self.proxy_entry.get(), "show_browser": self.show_browser_var.get()},
-            "contact_details": {"email": self.email_entry.get()},
-            "delivery_address": {"first_name": self.first_name_entry.get(), "last_name": self.last_name_entry.get(), "address": self.address_entry.get(), "apt_suite_etc": self.apt_entry.get(), "city": self.city_entry.get(), "country_code": self.country_code_entry.get(), "province_code": self.province_code_entry.get(), "postal_code": self.postal_code_entry.get(), "phone": self.phone_entry.get()},
-            "payment_details": {"name_on_card": self.card_name_entry.get(), "card_number": self.card_num_entry.get(), "expiration_date": self.card_exp_entry.get(), "security_code": self.card_cvv_entry.get()}
-        }
+        config = {"task_details": {}, "contact_details": {}, "delivery_address": {}, "payment_details": {}}
+        for key, entry in self.__dict__.items():
+            if "_entry" in key:
+                field_name = key.replace("_entry", "")
+                for cat in config:
+                    if hasattr(self, f"{field_name}_entry"):
+                        if cat == "task_details" and field_name in ["keywords", "color", "size", "proxy", "schedule_date", "schedule_time"]: config[cat][field_name] = entry.get()
+                        elif cat == "contact_details" and field_name == "email": config[cat][field_name] = entry.get()
+                        elif cat == "delivery_address" and field_name in ["first_name", "last_name", "address", "apt_suite_etc", "city", "country_code", "province_code", "postal_code", "phone"]: config[cat][field_name] = entry.get()
+                        elif cat == "payment_details" and field_name in ["card_name", "card_num", "card_exp", "card_cvv"]: config[cat][field_name.replace('card_','')] = entry.get()
+        config["task_details"]["show_browser"] = self.show_browser_var.get()
         try:
-            with open("config.json", "w") as f: json.dump(config_data, f, indent=2)
-            self.log("Configurazione salvata con successo!\n")
+            with open("config.json", "w") as f: json.dump(config, f, indent=2)
+            self.log("Configurazione salvata!\n")
         except Exception as e: self.log(f"Errore salvataggio: {e}\n")
 
     def load_config(self):
         self.log("Caricamento configurazione...\n")
         try:
-            with open("config.json", "r") as f: config_data = json.load(f)
-            task = config_data.get("task_details", {}); delivery = config_data.get("delivery_address", {}); payment = config_data.get("payment_details", {}); contact = config_data.get("contact_details", {})
-            for entry, val in [(self.keywords_entry, task.get("keywords")), (self.color_entry, task.get("color")), (self.size_entry, task.get("size")), (self.proxy_entry, task.get("proxy")), (self.email_entry, contact.get("email")), (self.first_name_entry, delivery.get("first_name")), (self.last_name_entry, delivery.get("last_name")), (self.address_entry, delivery.get("address")), (self.apt_entry, delivery.get("apt_suite_etc")), (self.city_entry, delivery.get("city")), (self.country_code_entry, delivery.get("country_code")), (self.province_code_entry, delivery.get("province_code")), (self.postal_code_entry, delivery.get("postal_code")), (self.phone_entry, delivery.get("phone")), (self.card_name_entry, payment.get("name_on_card")), (self.card_num_entry, payment.get("card_number")), (self.card_exp_entry, payment.get("expiration_date")), (self.card_cvv_entry, payment.get("security_code"))]:
-                entry.delete(0, tk.END); entry.insert(0, val or "")
-            self.show_browser_var.set(task.get("show_browser", False))
+            with open("config.json", "r") as f: config = json.load(f)
+            for cat, details in config.items():
+                for key, val in details.items():
+                    entry_name = f"{key}_entry"
+                    if key in ["name", "number", "exp", "cvv"]: entry_name = f"card_{key}_entry" # Handle payment details prefix
+                    if hasattr(self, entry_name):
+                        entry = getattr(self, entry_name)
+                        entry.delete(0, tk.END); entry.insert(0, val or "")
+            self.show_browser_var.set(config.get("task_details", {}).get("show_browser", False))
             self.log("Configurazione caricata!\n")
         except FileNotFoundError: self.log("ERRORE: 'config.json' non trovato.\n")
         except Exception as e: self.log(f"Errore caricamento: {e}\n")
 
-    def start_bot(self):
+    def start_or_schedule_bot(self):
+        date_str = self.schedule_date_entry.get()
+        time_str = self.schedule_time_entry.get()
+
+        if date_str and time_str:
+            try:
+                schedule_dt_str = f"{date_str} {time_str}"
+                schedule_dt = datetime.strptime(schedule_dt_str, "%Y-%m-%d %H:%M:%S")
+                now = datetime.now()
+                delay_seconds = (schedule_dt - now).total_seconds()
+
+                if delay_seconds < 0:
+                    self.log("ERRORE: La data e l'ora programmate sono nel passato.\n")
+                    return
+
+                self.log(f"Bot programmato per le {schedule_dt_str}. Attesa...\n")
+                self.after(int(delay_seconds * 1000), self.run_bot_task)
+            except ValueError:
+                self.log("ERRORE: Formato data/ora non valido. Usa YYYY-MM-DD e HH:MM:SS.\n")
+        else:
+            self.run_bot_task()
+
+    def run_bot_task(self):
         self.log("--- Avvio Bot ---\n"); self.start_button.config(state=tk.DISABLED)
         if not os.path.exists("config.json"):
             self.log("ERRORE: 'config.json' non trovato. Salva prima la configurazione.\n"); self.start_button.config(state=tk.NORMAL); return
@@ -117,8 +144,7 @@ class SupremeBotGUI(tk.Tk):
     def wait_for_process(self, process):
         process.join(); self.after(0, self.enable_buttons)
 
-    def enable_buttons(self):
-        self.start_button.config(state=tk.NORMAL)
+    def enable_buttons(self): self.start_button.config(state=tk.NORMAL)
 
     def periodic_log_check(self):
         while not self.log_queue.empty():
@@ -130,6 +156,5 @@ class SupremeBotGUI(tk.Tk):
         self.log_area.configure(state='normal'); self.log_area.insert(tk.END, message + end); self.log_area.configure(state='disabled'); self.log_area.see(tk.END)
 
 if __name__ == "__main__":
-    # Per avviare, esegui questo file.
     app = SupremeBotGUI()
     app.mainloop()

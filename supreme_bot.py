@@ -1,14 +1,10 @@
 # --- ISTRUZIONI DI INSTALLAZIONE ---
-# Prima di eseguire, assicurati di installare tutte le librerie necessarie:
-# pip install beautifulsoup4 aiohttp
-# pip install pyppeteer pyppeteer-extra pyppeteer-extra-plugin-stealth
+# Esegui: pip install beautifulsoup4 pyppeteer aiohttp
 
 import asyncio
 import json
 import random
-# Usa pyppeteer-extra per le funzionalità anti-bot
-from pyppeteer_extra import launch
-from pyppeteer_extra.stealth import stealth
+from pyppeteer import launch # Usa il pyppeteer standard
 from bs4 import BeautifulSoup
 
 USER_AGENTS = [
@@ -37,7 +33,6 @@ async def fill_checkout_form(page, config):
 
     await asyncio.sleep(random.uniform(0.5, 1.0))
 
-    # Utilizzo di ID stabili per i menu a tendina e selettori di placeholder per gli altri campi
     await page.type('input[placeholder="Email"]', contact['email'], {'delay': random.randint(35, 85)})
     await page.select('#Select0', addr['country_code'])
     await asyncio.sleep(0.4)
@@ -54,7 +49,6 @@ async def fill_checkout_form(page, config):
 
     print("Inserimento dati di pagamento...")
     async def fill_iframe_field(frame_name, value):
-        # La selezione dell'iframe è più stabile tramite il suo nome/id
         iframe = await page.waitForSelector(f'iframe[name="{frame_name}"]')
         frame = await iframe.contentFrame()
         await frame.type('input', value, {'delay': random.randint(50, 100)})
@@ -65,7 +59,6 @@ async def fill_checkout_form(page, config):
     await fill_iframe_field('card.verification_value', payment['security_code'])
     print("Dati di pagamento inseriti.")
 
-    # Click sulla checkbox dei termini e condizioni
     print("Accettazione termini e condizioni...")
     await page.click('input#checkout_terms_and_conditions')
 
@@ -79,10 +72,8 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
     launch_args = {
         'headless': not show_browser,
         'args': [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu'
+            '--no-sandbox', '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', '--disable-gpu'
         ]
     }
     if proxy:
@@ -91,8 +82,6 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
 
     browser = await launch(**launch_args)
     page = await browser.newPage()
-    # Applica lo stealth plugin per rendere il browser meno rilevabile
-    await stealth(page)
     await page.setUserAgent(random.choice(USER_AGENTS))
 
     try:
@@ -113,20 +102,18 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
             option_value = await page.evaluate(f'''(size_text) => {{
                 const select = document.querySelector('select[data-testid="size-dropdown"]');
                 for (let i = 0; i < select.options.length; i++) {{
-                    if (select.options[i].text.toLowerCase().trim() === size_text.toLowerCase().trim()) {{
-                        return select.options[i].value;
-                    }}
+                    if (select.options[i].text.toLowerCase().trim() === size_text.toLowerCase().trim()) return select.options[i].value;
                 }}
                 return null;
             }}''', size)
-            if not option_value: raise Exception(f"Taglia '{size}' non trovata o non disponibile.")
+            if not option_value: raise Exception(f"Taglia '{size}' non trovata.")
             await page.select('select[data-testid="size-dropdown"]', option_value)
 
         await page.click('button[data-testid="add-to-cart-button"]')
         print("Prodotto aggiunto al carrello.")
 
         await page.waitForSelector('div[data-testid="mini-cart"]', {'visible': True})
-        await asyncio.sleep(random.uniform(0.4, 0.8))
+        await asyncio.sleep(random.uniform(0.3, 0.7))
         await page.evaluate("document.querySelector('a[data-testid=\"mini-cart-checkout-link\"]').click()")
 
         await page.waitForSelector('#checkout-pay-button', {'timeout': 20000})
@@ -136,7 +123,8 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
 
         print("\nPROCESSO COMPLETATO! Il bot è pronto per il pagamento finale.")
         await page.screenshot({'path': 'final_filled_page.png', 'fullPage': True})
-        print("Per completare l'acquisto, decommenta la riga seguente:")
+
+        print("Per completare l'acquisto, decommenta la riga seguente in supreme_bot.py:")
         # await page.click('#checkout-pay-button')
 
     except Exception as e:
