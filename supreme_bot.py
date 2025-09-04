@@ -30,33 +30,37 @@ async def fill_checkout_form(page, config):
 
     await asyncio.sleep(random.uniform(0.5, 1.0))
 
-    # Usa selettori standard di Shopify, più robusti
-    await page.type('#checkout_email', contact['email'], {'delay': random.randint(35, 85)})
-    await page.select('#checkout_shipping_address_country', addr['country_code'])
+    # Revert ai selettori ID originali e stabili
+    await page.type('#email', contact['email'], {'delay': random.randint(35, 85)})
+    await page.select('#Select0', addr['country_code'])
     await asyncio.sleep(0.4)
-    await page.type('#checkout_shipping_address_first_name', addr['first_name'], {'delay': random.randint(35, 85)})
-    await page.type('#checkout_shipping_address_last_name', addr['last_name'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField0', addr['first_name'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField1', addr['last_name'], {'delay': random.randint(35, 85)})
 
-    # --- Logica per l'autocompletamento di Google ---
     print("Inserimento indirizzo e gestione autocompletamento...")
-    await page.type('#checkout_shipping_address_address1', addr['address'], {'delay': random.randint(40, 90)})
+    await page.type('#shipping-address1', addr['address'], {'delay': random.randint(40, 90)})
 
     # Clicca il pulsante "cerca" (lente di ingrandimento)
-    search_button_selector = 'button[aria-label*="Search"]' # Selettore più generico
-    await page.waitForSelector(search_button_selector)
-    await page.click(search_button_selector)
+    search_button_selector = 'button[aria-label*="Cerca"]' # Usa l'etichetta italiana
+    try:
+        await page.waitForSelector(search_button_selector, {'timeout': 3000})
+        await page.click(search_button_selector)
 
-    # Attendi e clicca il primo suggerimento
-    autocomplete_selector = '.pac-item'
-    await page.waitForSelector(autocomplete_selector, {'timeout': 5000})
-    await asyncio.sleep(0.5)
-    await page.click(autocomplete_selector)
-    print("Suggerimento indirizzo cliccato. CAP, Città e Provincia dovrebbero essere compilati.")
+        # Attendi e clicca il primo suggerimento
+        autocomplete_selector = '.pac-item'
+        await page.waitForSelector(autocomplete_selector, {'timeout': 5000})
+        await asyncio.sleep(0.5)
+        await page.click(autocomplete_selector)
+        print("Suggerimento indirizzo cliccato.")
+    except Exception:
+        print("Nessun suggerimento di indirizzo trovato o nessun pulsante 'cerca', procedo con la compilazione manuale.")
 
-    # Compila i campi rimanenti
-    if addr.get('apt_suite_etc'):
-        await page.type('#checkout_shipping_address_address2', addr['apt_suite_etc'], {'delay': random.randint(35, 85)})
-    await page.type('#checkout_shipping_address_phone', addr['phone'], {'delay': random.randint(35, 85)})
+    # Compila i campi rimanenti (necessario se l'autocomplete non popola tutto)
+    await page.type('#TextField2', addr.get('apt_suite_etc', ''), {'delay': random.randint(35, 85)})
+    await page.type('#TextField4', addr['postal_code'], {'delay': random.randint(35, 85)})
+    await page.type('#TextField3', addr['city'], {'delay': random.randint(35, 85)})
+    await page.select('#Select1', addr['province_code'])
+    await page.type('#TextField5', addr['phone'], {'delay': random.randint(35, 85)})
     print("Dati di contatto e indirizzo inseriti.")
 
     print("Inserimento dati di pagamento...")
@@ -72,8 +76,7 @@ async def fill_checkout_form(page, config):
     print("Dati di pagamento inseriti.")
 
     print("Accettazione termini e condizioni...")
-    # Click forzato tramite JavaScript per massima affidabilità
-    await page.evaluate("document.getElementById('checkout_terms_and_conditions').click();")
+    await page.evaluate("document.querySelector('label[for=\"checkout_terms_and_conditions\"]').click();")
 
 async def main(product_keywords, color=None, size=None, proxy=None, show_browser=False):
     if not product_keywords: raise ValueError("Parole chiave obbligatorie.")
@@ -130,7 +133,7 @@ async def main(product_keywords, color=None, size=None, proxy=None, show_browser
         print("\nPROCESSO COMPLETATO! Il bot è pronto per il pagamento finale.")
         await page.screenshot({'path': 'final_filled_page.png', 'fullPage': True})
 
-        print("Per completare l'acquisto, decommenta la riga seguente in supreme_bot.py:")
+        print("Per completare l'acquisto, decommenta la riga seguente:")
         # await page.click('#checkout-pay-button')
 
     except Exception as e:
