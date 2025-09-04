@@ -37,9 +37,9 @@ async def fill_checkout_form(page, config):
 
     await asyncio.sleep(random.uniform(0.5, 1.0))
 
-    # Usa selettori di attributi più robusti invece di ID generici
+    # Utilizzo di ID stabili per i menu a tendina e selettori di placeholder per gli altri campi
     await page.type('input[placeholder="Email"]', contact['email'], {'delay': random.randint(35, 85)})
-    await page.select('select[name="checkout[shipping_address][country]"]', addr['country_code'])
+    await page.select('#Select0', addr['country_code'])
     await asyncio.sleep(0.4)
     await page.type('input[placeholder="Nome"]', addr['first_name'], {'delay': random.randint(35, 85)})
     await page.type('input[placeholder="Cognome"]', addr['last_name'], {'delay': random.randint(35, 85)})
@@ -48,7 +48,7 @@ async def fill_checkout_form(page, config):
         await page.type('input[placeholder="Appartamento, interno, ecc. (opzionale)"]', addr['apt_suite_etc'], {'delay': random.randint(35, 85)})
     await page.type('input[placeholder="CAP"]', addr['postal_code'], {'delay': random.randint(35, 85)})
     await page.type('input[placeholder="Città"]', addr['city'], {'delay': random.randint(35, 85)})
-    await page.select('select[name="checkout[shipping_address][province]"]', addr['province_code'])
+    await page.select('#Select1', addr['province_code'])
     await page.type('input[placeholder="Telefono"]', addr['phone'], {'delay': random.randint(35, 85)})
     print("Dati di contatto e indirizzo inseriti.")
 
