@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 import json
 import multiprocessing as mp
+import threading
 import supreme_bot
 import sys
 import queue
